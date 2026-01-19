@@ -1,0 +1,14 @@
+{
+  "name": "kaspa-timepay",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently -n next,watcher \"next dev -p 3000\" \"node watcher.js\"",
+    "build": "next build",
+    "start": "next start -p 3000"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

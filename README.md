@@ -53,3 +53,4 @@ Open http://localhost:3000
   - run its own indexer / watcher for reliability
 
 - Smallest unit: **1 sompi = 1e-8 KAS** citeturn2search1
+redeploy 1768912083

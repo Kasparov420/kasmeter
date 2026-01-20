@@ -1,50 +1,60 @@
+// pages/api/session/create.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { z } from 'zod';
-import { db } from '../../../lib/db';
 import crypto from 'crypto';
-import { makeUniqueAmountSompi, sompiToKas, priceSompiForCheckpoint } from '../../../lib/kaspa';
+import { createSession } from '../../../lib/db';
+import { sompiToKas, kasToSompi, makeUniqueAmountSompi } from '../../../lib/kaspa';
 
 const BodySchema = z.object({
-  // optional: allow custom label
-  label: z.string().max(80).optional(),
-  // payment checkpoint (time slice) in seconds
-  checkpoint_seconds: z.number().int().min(15).max(600).optional(),
+  checkpoint_seconds: z.number().int().min(1).max(3600).default(10),
+  duration_seconds: z.number().int().min(5).max(24 * 60 * 60).default(60),
+  rate_kas_per_minute: z.number().min(0.000001).max(1000).optional(),
 });
-
-function getEnv(name: string, fallback?: string): string {
-  const v = process.env[name] ?? fallback;
-  if (!v) throw new Error(`Missing env ${name}`);
-  return v;
-}
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const receiver = getEnv('RECEIVER_ADDRESS');
-  const defaultCheckpointSeconds = Number(getEnv('CHECKPOINT_SECONDS_DEFAULT', '60'));
-  const rateKasPerMinute = Number(getEnv('RATE_KAS_PER_MINUTE', '0.1'));
-
   const parsed = BodySchema.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid body', issues: parsed.error.issues });
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+  }
 
-  const id = crypto.randomBytes(12).toString('hex');
-  const checkpointSeconds = parsed.data.checkpoint_seconds ?? defaultCheckpointSeconds;
-  const base = priceSompiForCheckpoint(rateKasPerMinute, checkpointSeconds);
-  const expected = makeUniqueAmountSompi(base);
+  const receiver = process.env.RECEIVER_ADDRESS;
+  if (!receiver) return res.status(500).json({ error: 'Missing RECEIVER_ADDRESS env var' });
+
+  const { checkpoint_seconds, duration_seconds } = parsed.data;
 
   const now = Math.floor(Date.now() / 1000);
-  db.prepare(
-    `INSERT INTO sessions (id, receiver_address, expected_amount_sompi, checkpoint_seconds, rate_kas_per_minute, created_at, paid_until, last_payment_outpoint)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`
-  ).run(id, receiver, expected, checkpointSeconds, rateKasPerMinute, now, 0);
+  const id = crypto.randomUUID();
+
+  // Simple pricing (you can change later)
+  const rateKasPerMinute = parsed.data.rate_kas_per_minute ?? 0.1;
+
+  // Total price for the selected duration, then add a tiny tag so payments are unique
+  const totalKas = rateKasPerMinute * (duration_seconds / 60);
+  const baseSompi = Math.max(1, kasToSompi(totalKas));
+  const expectedSompi = makeUniqueAmountSompi(baseSompi);
+
+  createSession({
+    id,
+    receiver_address: receiver,
+    expected_amount_sompi: expectedSompi,
+    checkpoint_seconds,
+    rate_kas_per_minute: rateKasPerMinute,
+    created_at: now,
+    paid_until: now,
+    last_payment_outpoint: null,
+  });
 
   return res.status(200).json({
     id,
     receiver_address: receiver,
-    expected_amount_sompi: expected,
-    expected_amount_kas: sompiToKas(expected),
-    checkpoint_seconds: checkpointSeconds,
+    expected_amount_sompi: expectedSompi,
+    expected_amount_kas: sompiToKas(expectedSompi),
+    checkpoint_seconds,
+    duration_seconds,
     rate_kas_per_minute: rateKasPerMinute,
-    label: parsed.data.label ?? null,
+    created_at: now,
+    paid_until: now,
   });
 }

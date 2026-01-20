@@ -1,34 +1,46 @@
+// lib/db.ts
 export type Session = {
   id: string;
-  createdAt: number;
-  paidUntil: number;
+
+  // receiver (pay-to) address
   address: string;
-  expectedSompi: string;
-  checkpointSeconds: number;
+
+  // pricing + timing
+  expected_amount_sompi: number;
+  checkpoint_seconds: number;
+  rate_kas_per_minute: number;
+
+  created_at: number;   // unix seconds
+  paid_until: number;   // unix seconds
+
+  // optional
+  last_payment_outpoint: string | null;
 };
 
-const g = globalThis as any;
-if (!g.__kasmeter) g.__kasmeter = { sessions: new Map<string, Session>() };
-
-const sessions: Map<string, Session> = g.__kasmeter.sessions;
-
-export function dbInit() {
-  // no-op (kept so other code doesn't break)
+// Global store (survives within a warm serverless instance)
+declare global {
+  // eslint-disable-next-line no-var
+  var __KASMETER_SESSIONS__: Map<string, Session> | undefined;
 }
 
-export function createSession(s: Session) {
-  sessions.set(s.id, s);
+const store: Map<string, Session> =
+  globalThis.__KASMETER_SESSIONS__ ?? new Map<string, Session>();
+
+globalThis.__KASMETER_SESSIONS__ = store;
+
+export function createSession(s: Session): Session {
+  store.set(s.id, s);
   return s;
 }
 
 export function getSession(id: string): Session | null {
-  return sessions.get(id) ?? null;
+  return store.get(id) ?? null;
 }
 
 export function updateSession(id: string, patch: Partial<Session>): Session | null {
-  const prev = sessions.get(id);
-  if (!prev) return null;
-  const next = { ...prev, ...patch };
-  sessions.set(id, next);
+  const cur = store.get(id);
+  if (!cur) return null;
+  const next: Session = { ...cur, ...patch };
+  store.set(id, next);
   return next;
 }

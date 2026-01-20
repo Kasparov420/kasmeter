@@ -37,7 +37,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   createSession({
     id,
-    receiver_address: receiver,
+    address: receiver,
     expected_amount_sompi: expectedSompi,
     checkpoint_seconds,
     rate_kas_per_minute: rateKasPerMinute,

@@ -1,9 +1,9 @@
 // pages/api/session/create.ts
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { z } from 'zod';
-import crypto from 'crypto';
-import { createSession } from '../../../lib/db';
-import { sompiToKas, kasToSompi, makeUniqueAmountSompi } from '../../../lib/kaspa';
+import type { NextApiRequest, NextApiResponse } from "next";
+import { z } from "zod";
+import crypto from "crypto";
+import { createSession } from "../../../lib/db";
+import { kasToSompi, makeUniqueAmountSompi, sompiToKas } from "../../../lib/kaspa";
 
 const BodySchema = z.object({
   checkpoint_seconds: z.number().int().min(1).max(3600).default(10),
@@ -12,26 +12,26 @@ const BodySchema = z.object({
 });
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const parsed = BodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
   }
 
   const receiver = process.env.RECEIVER_ADDRESS;
-  if (!receiver) return res.status(500).json({ error: 'Missing RECEIVER_ADDRESS env var' });
+  if (!receiver) return res.status(500).json({ error: "Missing RECEIVER_ADDRESS env var" });
 
   const { checkpoint_seconds, duration_seconds } = parsed.data;
 
   const now = Math.floor(Date.now() / 1000);
   const id = crypto.randomUUID();
 
-  // Simple pricing (you can change later)
+  // Pricing model
   const rateKasPerMinute = parsed.data.rate_kas_per_minute ?? 0.1;
-
-  // Total price for the selected duration, then add a tiny tag so payments are unique
   const totalKas = rateKasPerMinute * (duration_seconds / 60);
+
+  // expected amount in sompi + tiny randomness so concurrent sessions differ
   const baseSompi = Math.max(1, kasToSompi(totalKas));
   const expectedSompi = makeUniqueAmountSompi(baseSompi);
 
